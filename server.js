@@ -5,32 +5,23 @@ require("dotenv").config();
 
 const app = express();
 
-// Dynamic CORS for production - USE ONLY ONE cors() middleware
-const allowedOrigins = [
-  "http://localhost:5173", // Vite default port
-  "http://localhost:3000",
-  "https://e-mailer-smoky.vercel.app", // React default port
-  process.env.FRONTEND_URL, // Your Vercel URL
-].filter(Boolean); // Remove undefined values
-
+// SIMPLE CORS - Allow all origins (for production use)
 app.use(
   cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps or curl)
-      if (!origin) return callback(null, true);
-
-      if (
-        allowedOrigins.indexOf(origin) !== -1 ||
-        process.env.NODE_ENV !== "production"
-      ) {
-        callback(null, true);
-      } else {
-        callback(new Error(`CORS policy does not allow origin: ${origin}`));
-      }
-    },
+    origin: true, // Allow all origins
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   }),
 );
+
+// For debugging - log all requests
+app.use((req, res, next) => {
+  console.log(
+    `${req.method} ${req.path} - Origin: ${req.headers.origin || "no origin"}`,
+  );
+  next();
+});
 
 app.use(express.json());
 
@@ -44,6 +35,24 @@ const createTransporter = () => {
     },
   });
 };
+
+// Health check endpoint
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "healthy",
+    timestamp: new Date().toISOString(),
+    cors: "enabled - all origins allowed",
+  });
+});
+
+// Test endpoint
+app.get("/api/test", (req, res) => {
+  res.json({
+    message: "Backend server is running!",
+    environment: process.env.NODE_ENV || "development",
+    cors: "enabled",
+  });
+});
 
 // Send emails with rate limiting
 app.post("/api/send-emails", async (req, res) => {
@@ -96,7 +105,6 @@ app.post("/api/send-emails", async (req, res) => {
 
       // Wait 2 seconds between emails to avoid rate limiting
       if (i < emailList.length - 1) {
-        // Don't wait after last email
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
     } catch (error) {
@@ -126,24 +134,6 @@ app.post("/api/send-emails", async (req, res) => {
   });
 });
 
-// Health check endpoint (required for Render)
-app.get("/health", (req, res) => {
-  res.status(200).json({
-    status: "healthy",
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-  });
-});
-
-// Test endpoint
-app.get("/api/test", (req, res) => {
-  res.json({
-    message: "Backend server is running!",
-    environment: process.env.NODE_ENV || "development",
-    allowedOrigins: allowedOrigins, // For debugging
-  });
-});
-
 // Test email configuration
 app.post("/api/test-connection", async (req, res) => {
   const { testEmail } = req.body;
@@ -160,7 +150,7 @@ app.post("/api/test-connection", async (req, res) => {
       from: `"Test" <${process.env.EMAIL_USER}>`,
       to: testEmail,
       subject: "Test Email - Connection Working!",
-      html: "<h1>✅ Success!</h1><p>Your Gmail integration is working perfectly.</p>",
+      html: "<h1>✅ Success!</h1><p>Your Gmail integration is working perfectly.</p><p>CORS is enabled for all origins.</p>",
     });
     res.json({ success: true, message: "Test email sent successfully!" });
   } catch (error) {
@@ -184,5 +174,5 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
   console.log(`📍 Environment: ${process.env.NODE_ENV || "development"}`);
-  console.log(`🔗 Allowed origins:`, allowedOrigins);
+  console.log(`🔓 CORS: Enabled for all origins`);
 });
