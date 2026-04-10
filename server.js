@@ -4,24 +4,28 @@ const cors = require("cors");
 require("dotenv").config();
 
 const app = express();
-app.use(cors());
 
-// Dynamic CORS for production
+// Dynamic CORS for production - USE ONLY ONE cors() middleware
 const allowedOrigins = [
-  "http://localhost:5173",
-  process.env.FRONTEND_URL, // Replace with your actual Vercel URL
-];
+  "http://localhost:5173", // Vite default port
+  "http://localhost:3000", // React default port
+  process.env.FRONTEND_URL, // Your Vercel URL
+].filter(Boolean); // Remove undefined values
 
 app.use(
   cors({
     origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps or curl)
       if (!origin) return callback(null, true);
-      if (allowedOrigins.indexOf(origin) === -1) {
-        const msg =
-          "The CORS policy for this site does not allow access from the specified Origin.";
-        return callback(new Error(msg), false);
+
+      if (
+        allowedOrigins.indexOf(origin) !== -1 ||
+        process.env.NODE_ENV !== "production"
+      ) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS policy does not allow origin: ${origin}`));
       }
-      return callback(null, true);
     },
     credentials: true,
   }),
@@ -35,7 +39,7 @@ const createTransporter = () => {
     service: "gmail",
     auth: {
       user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_APP_PASSWORD, // Use App Password, not regular password
+      pass: process.env.EMAIL_APP_PASSWORD,
     },
   });
 };
@@ -44,11 +48,25 @@ const createTransporter = () => {
 app.post("/api/send-emails", async (req, res) => {
   const { recipients, subject, htmlContent, senderName } = req.body;
 
+  // Add validation for required fields
+  if (!recipients || !subject || !htmlContent) {
+    return res.status(400).json({
+      error: "Missing required fields: recipients, subject, or htmlContent",
+    });
+  }
+
   const emailList = Array.isArray(recipients)
     ? recipients
     : recipients.split(",").map((email) => email.trim());
-  const transporter = createTransporter();
 
+  // Check if there are valid recipients
+  if (emailList.length === 0) {
+    return res.status(400).json({
+      error: "No valid recipients provided",
+    });
+  }
+
+  const transporter = createTransporter();
   const results = [];
   const failedEmails = [];
 
@@ -76,14 +94,20 @@ app.post("/api/send-emails", async (req, res) => {
       console.log(`✅ Sent to ${email} (${i + 1}/${emailList.length})`);
 
       // Wait 2 seconds between emails to avoid rate limiting
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      if (i < emailList.length - 1) {
+        // Don't wait after last email
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
     } catch (error) {
       console.error(`❌ Failed to send to ${email}:`, error.message);
       results.push({ email, success: false, error: error.message });
       failedEmails.push(email);
 
       // If it's an authentication error, stop completely
-      if (error.message.includes("authentication")) {
+      if (
+        error.message.includes("authentication") ||
+        error.message.includes("login")
+      ) {
         return res.status(401).json({
           error: "Gmail authentication failed. Please check your credentials.",
           results,
@@ -101,16 +125,32 @@ app.post("/api/send-emails", async (req, res) => {
   });
 });
 
-// Test email configuration
+// Health check endpoint (required for Render)
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "healthy",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
+});
+
+// Test endpoint
 app.get("/api/test", (req, res) => {
   res.json({
     message: "Backend server is running!",
     environment: process.env.NODE_ENV || "development",
+    allowedOrigins: allowedOrigins, // For debugging
   });
 });
 
+// Test email configuration
 app.post("/api/test-connection", async (req, res) => {
   const { testEmail } = req.body;
+
+  if (!testEmail) {
+    return res.status(400).json({ error: "Test email address required" });
+  }
+
   const transporter = createTransporter();
 
   try {
@@ -123,11 +163,25 @@ app.post("/api/test-connection", async (req, res) => {
     });
     res.json({ success: true, message: "Test email sent successfully!" });
   } catch (error) {
+    console.error("Test connection error:", error.message);
     res.status(401).json({ success: false, error: error.message });
   }
 });
 
+// Handle 404 for undefined routes
+app.use((req, res) => {
+  res.status(404).json({ error: "Route not found" });
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error("Server error:", err);
+  res.status(500).json({ error: "Internal server error" });
+});
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`📍 Environment: ${process.env.NODE_ENV || "development"}`);
+  console.log(`🔗 Allowed origins:`, allowedOrigins);
 });
