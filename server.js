@@ -8,7 +8,8 @@ const app = express();
 // Dynamic CORS for production - USE ONLY ONE cors() middleware
 const allowedOrigins = [
   "http://localhost:5173", // Vite default port
-  "http://localhost:3000", // React default port
+  "http://localhost:3000",
+  "https://e-mailer-smoky.vercel.app", // React default port
   process.env.FRONTEND_URL, // Your Vercel URL
 ].filter(Boolean); // Remove undefined values
 
