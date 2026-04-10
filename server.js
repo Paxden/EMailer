@@ -8,7 +8,7 @@ app.use(cors());
 
 // Dynamic CORS for production
 const allowedOrigins = [
-  "http://localhost:3000",
+  "http://localhost:5173",
   process.env.FRONTEND_URL, // Replace with your actual Vercel URL
 ];
 
