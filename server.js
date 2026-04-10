@@ -5,6 +5,28 @@ require("dotenv").config();
 
 const app = express();
 app.use(cors());
+
+// Dynamic CORS for production
+const allowedOrigins = [
+  "http://localhost:3000",
+  process.env.FRONTEND_URL, // Replace with your actual Vercel URL
+];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.indexOf(origin) === -1) {
+        const msg =
+          "The CORS policy for this site does not allow access from the specified Origin.";
+        return callback(new Error(msg), false);
+      }
+      return callback(null, true);
+    },
+    credentials: true,
+  }),
+);
+
 app.use(express.json());
 
 // Create transporter with Gmail
@@ -80,6 +102,13 @@ app.post("/api/send-emails", async (req, res) => {
 });
 
 // Test email configuration
+app.get("/api/test", (req, res) => {
+  res.json({
+    message: "Backend server is running!",
+    environment: process.env.NODE_ENV || "development",
+  });
+});
+
 app.post("/api/test-connection", async (req, res) => {
   const { testEmail } = req.body;
   const transporter = createTransporter();
